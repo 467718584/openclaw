@@ -14,17 +14,35 @@ backend. Existing legacy Anthropic token profiles are still honored at runtime
 if they are already configured.
 
 <Warning>
-Anthropic changed third-party harness billing on **April 4, 2026 at 12:00 PM
-PT / 8:00 PM BST**. Anthropic says Claude subscription limits no longer cover
-OpenClaw or other third-party harnesses. Existing legacy Anthropic token auth
-can still run in OpenClaw, but Anthropic now requires **Extra Usage**
-(pay-as-you-go, billed separately from the subscription) for that traffic.
+Anthropic's public Claude Code docs explicitly document non-interactive CLI
+usage such as `claude -p`. Based on those docs, we believe local,
+user-managed Claude Code CLI fallback is likely allowed.
 
-If you want a clearer billing path, use an Anthropic API key instead. OpenClaw
-also supports other subscription-style options, including [OpenAI
-Codex](/providers/openai), [Alibaba Cloud Model Studio Coding
-Plan](/providers/qwen_modelstudio), [MiniMax Coding Plan](/providers/minimax),
-and [Z.AI / GLM Coding Plan](/providers/glm).
+Separately, Anthropic notified OpenClaw users on **April 4, 2026 at 12:00 PM
+PT / 8:00 PM BST** that **OpenClaw counts as a third-party harness**. Their
+stated policy is that OpenClaw-driven Claude-login traffic no longer uses the
+included Claude subscription pool and instead requires **Extra Usage**
+(pay-as-you-go, billed separately from the subscription).
+
+That policy distinction is about **OpenClaw-driven Claude CLI reuse**, not
+about running `claude` directly in your own terminal. That said, Anthropic's
+third-party harness policy still leaves enough ambiguity around
+subscription-backed use in external products that we do not recommend this
+path for production.
+
+Anthropic's current public docs:
+
+- [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference)
+- [Claude Agent SDK overview](https://platform.claude.com/docs/en/agent-sdk/overview)
+
+- [Using Claude Code with your Pro or Max plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
+- [Using Claude Code with your Team or Enterprise plan](https://support.anthropic.com/en/articles/11845131-using-claude-code-with-your-team-or-enterprise-plan/)
+
+If you want the clearest billing path, use an Anthropic API key instead.
+OpenClaw also supports other subscription-style options, including [OpenAI
+Codex](/providers/openai), [Qwen Cloud Coding Plan](/providers/qwen),
+[MiniMax Coding Plan](/providers/minimax), and [Z.AI / GLM Coding
+Plan](/providers/glm).
 </Warning>
 
 ## Option A: Anthropic API key
@@ -182,8 +200,8 @@ This only activates when `params.context1m` is explicitly set to `true` for
 that model.
 
 Requirement: Anthropic must allow long-context usage on that credential
-(typically API key billing, or Claude CLI / legacy token auth with Extra Usage
-enabled). Otherwise Anthropic returns:
+(typically API key billing, or OpenClaw's Claude-login path / legacy token auth
+with Extra Usage enabled). Otherwise Anthropic returns:
 `HTTP 429: rate_limit_error: Extra usage is required for long context requests`.
 
 Note: Anthropic currently rejects `context-1m-*` beta requests when using
@@ -195,12 +213,16 @@ header while keeping the required OAuth betas.
 ## Option B: Claude CLI as the message provider
 
 **Best for:** a single-user gateway host that already has Claude CLI installed
-and signed in with a Claude subscription.
+and signed in, as a local fallback rather than the recommended production path.
 
-Billing note: when Claude CLI is used through OpenClaw, Anthropic now treats
-that traffic as third-party harness usage. As of **April 4, 2026 at 12:00 PM
-PT / 8:00 PM BST**, Anthropic requires **Extra Usage** instead of included
-Claude subscription limits for this path.
+Billing note: We believe Claude Code CLI fallback is likely allowed for local,
+user-managed automation based on Anthropic's public CLI docs. That said,
+Anthropic's third-party harness policy creates enough ambiguity around
+subscription-backed use in external products that we do not recommend it for
+production. Anthropic also told OpenClaw users that **OpenClaw-driven** Claude
+CLI usage is treated as third-party harness traffic and, as of **April 4, 2026
+at 12:00 PM PT / 8:00 PM BST**, requires **Extra Usage** instead of the
+included Claude subscription limits.
 
 This path uses the local `claude` binary for model inference instead of calling
 the Anthropic API directly. OpenClaw treats it as a **CLI backend provider**
@@ -211,8 +233,8 @@ with model refs like:
 
 How it works:
 
-1. OpenClaw launches `claude -p --output-format json ...` on the **gateway
-   host**.
+1. OpenClaw launches `claude -p --output-format stream-json --include-partial-messages ...`
+   on the **gateway host** and sends the prompt over stdin.
 2. The first turn sends `--session-id <uuid>`.
 3. Follow-up turns reuse the stored Claude session via `--resume <sessionId>`.
 4. Your chat messages still go through the normal OpenClaw message pipeline, but
@@ -333,10 +355,13 @@ More details: [/gateway/cli-backends](/gateway/cli-backends)
 
 ## Notes
 
-- Anthropic says that starting **April 4, 2026 at 12:00 PM PT / 8:00 PM BST**,
-  OpenClaw usage with Claude CLI or legacy Anthropic token auth requires **Extra Usage**
-  (pay-as-you-go billed separately from the subscription).
-- Existing legacy Anthropic token profiles are still honored at runtime, but OpenClaw no longer offers setup-token onboarding or auth commands for new setups.
+- Anthropic's public Claude Code docs still document direct CLI usage such as
+  `claude -p`. We believe local, user-managed fallback is likely allowed, but
+  Anthropic's separate notice to OpenClaw users says the **OpenClaw**
+  Claude-login path is third-party harness usage and requires **Extra Usage**
+  (pay-as-you-go billed separately from the subscription). For production, we
+  recommend Anthropic API keys instead.
+- Anthropic setup-token is available again in OpenClaw as a legacy/manual path. Anthropic's OpenClaw-specific billing notice still applies, so use it with the expectation that Anthropic requires **Extra Usage** for this path.
 - Auth details + reuse rules are in [/concepts/oauth](/concepts/oauth).
 
 ## Troubleshooting
@@ -360,6 +385,8 @@ More details: [/gateway/cli-backends](/gateway/cli-backends)
 **No available auth profile (all in cooldown/unavailable)**
 
 - Check `openclaw models status --json` for `auth.unusableProfiles`.
+- Anthropic rate-limit cooldowns can be model-scoped, so a sibling Anthropic
+  model may still be usable even when the current one is cooling down.
 - Add another Anthropic profile or wait for cooldown.
 
 More: [/gateway/troubleshooting](/gateway/troubleshooting) and [/help/faq](/help/faq).
